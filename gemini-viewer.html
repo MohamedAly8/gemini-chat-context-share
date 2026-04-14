@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini Chat Viewer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0d0f12;
+    --surface: #151820;
+    --surface2: #1c2130;
+    --border: #252c3a;
+    --border2: #2e3849;
+    --text: #d4dae8;
+    --text2: #7a8498;
+    --text3: #4a5468;
+    --user-bg: #0f1c2e;
+    --user-border: #1a3554;
+    --user-tag: #1d4ed8;
+    --model-bg: #151820;
+    --model-border: #252c3a;
+    --model-tag: #065f46;
+    --accent: #3b82f6;
+    --accent2: #10b981;
+    --tool-bg: #0e1a10;
+    --tool-border: #1a3320;
+    --tool-tag: #14532d;
+    --thought-bg: #150f1a;
+    --thought-border: #2a1a3a;
+    --warn: #f59e0b;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Drop zone ── */
+  #drop-screen {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 2rem;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .2em;
+    color: var(--text3);
+    text-transform: uppercase;
+    margin-bottom: 3rem;
+  }
+  .logo span { color: var(--accent); }
+
+  .drop-card {
+    border: 1.5px dashed var(--border2);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 520px;
+    padding: 3rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    background: var(--surface);
+    text-align: center;
+    position: relative;
+  }
+  .drop-card:hover, .drop-card.over {
+    border-color: var(--accent);
+    background: #0f1827;
+  }
+
+  .drop-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    background: #0f1827;
+    border: 1px solid var(--border2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: .5rem;
+  }
+  .drop-icon svg { width: 22px; height: 22px; color: var(--accent); }
+
+  .drop-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .drop-sub {
+    font-size: 13px;
+    color: var(--text2);
+    max-width: 320px;
+  }
+  .drop-formats {
+    display: flex;
+    gap: 6px;
+    margin-top: .25rem;
+  }
+  .fmt-badge {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    letter-spacing: .05em;
+  }
+
+  #file-input { display: none; }
+
+  .or-paste {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: .5rem;
+  }
+
+  .paste-area {
+    width: 100%;
+    max-width: 520px;
+    margin-top: .75rem;
+  }
+  .paste-area textarea {
+    width: 100%;
+    min-height: 100px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: .75rem 1rem;
+    resize: vertical;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .paste-area textarea:focus { border-color: var(--accent); }
+  .paste-area textarea::placeholder { color: var(--text3); }
+
+  .parse-btn {
+    margin-top: .5rem;
+    width: 100%;
+    padding: .6rem 1rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .parse-btn:hover { opacity: .85; }
+
+  .error-msg {
+    font-size: 12px;
+    color: #f87171;
+    margin-top: .5rem;
+    display: none;
+  }
+
+  /* ── Viewer layout ── */
+  #viewer { display: none; flex-direction: column; min-height: 100vh; }
+
+  .viewer-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    padding: .85rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+  }
+  .header-logo {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .2em;
+    color: var(--text3);
+    text-transform: uppercase;
+  }
+  .header-logo span { color: var(--accent); }
+
+  .header-sep { color: var(--border2); }
+
+  .chat-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    max-width: 400px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .header-actions { display: flex; gap: .5rem; align-items: center; }
+
+  .stat-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+
+  .icon-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .15s;
+  }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+  .icon-btn svg { width: 14px; height: 14px; }
+
+  .chat-thread {
+    flex: 1;
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── Turn ── */
+  .turn {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border);
+    animation: fadeUp .25s ease both;
+  }
+  .turn:last-child { border-bottom: none; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .turn-header {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    margin-bottom: .85rem;
+  }
+
+  .role-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .role-user { background: var(--user-bg); border: 1px solid var(--user-border); color: #60a5fa; }
+  .role-model { background: var(--model-bg); border: 1px solid var(--model-border); color: #34d399; }
+  .role-tool { background: var(--tool-bg); border: 1px solid var(--tool-border); color: #4ade80; }
+
+  .turn-idx {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* ── Part types ── */
+  .part { margin-bottom: .75rem; }
+  .part:last-child { margin-bottom: 0; }
+
+  .text-part {
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* context blocks (session_context, editor_context) */
+  .context-block {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 12px;
+  }
+  .context-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .5rem .85rem;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .context-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .context-label svg { width: 12px; height: 12px; }
+  .chevron { color: var(--text3); transition: transform .2s; }
+  .chevron.open { transform: rotate(90deg); }
+  .context-body {
+    padding: .75rem .85rem;
+    background: var(--surface);
+    font-family: var(--mono);
+    color: var(--text2);
+    line-height: 1.6;
+    display: none;
+    white-space: pre-wrap;
+    overflow-x: auto;
+  }
+  .context-body.open { display: block; }
+
+  /* tool call / response */
+  .tool-block {
+    border: 1px solid var(--tool-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--tool-bg);
+  }
+  .tool-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .5rem .85rem;
+    border-bottom: 1px solid var(--tool-border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .tool-meta { display: flex; align-items: center; gap: .5rem; }
+  .tool-type-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .tbadge-call { background: #0a1f0e; border: 1px solid #14532d; color: #4ade80; }
+  .tbadge-response { background: #0f1827; border: 1px solid var(--user-border); color: #60a5fa; }
+  .tool-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+  }
+  .tool-args-preview {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    max-width: 300px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tool-body {
+    padding: .75rem .85rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    line-height: 1.6;
+    display: none;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .tool-body.open { display: block; }
+
+  /* thought blocks */
+  .thought-block {
+    border: 1px solid var(--thought-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--thought-bg);
+  }
+  .thought-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .5rem .85rem;
+    cursor: pointer;
+    user-select: none;
+  }
+  .thought-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #a78bfa;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .thought-body {
+    padding: .75rem .85rem;
+    font-size: 12px;
+    color: #7c6faa;
+    font-style: italic;
+    line-height: 1.7;
+    display: none;
+    border-top: 1px solid var(--thought-border);
+  }
+  .thought-body.open { display: block; }
+
+  /* function response part */
+  .fn-response {
+    border: 1px solid var(--user-border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--user-bg);
+  }
+  .fn-response-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .5rem .85rem;
+    border-bottom: 1px solid var(--user-border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .fn-response-body {
+    padding: .75rem .85rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    line-height: 1.6;
+    display: none;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .fn-response-body.open { display: block; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* copy button */
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .06em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .copy-btn:hover { border-color: var(--text2); color: var(--text2); }
+  .copy-btn.copied { border-color: var(--accent2); color: var(--accent2); }
+
+  /* empty state */
+  .empty-notice {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: var(--text3);
+    font-size: 13px;
+  }
+
+  /* sidebar turn index */
+  .turn-timestamp {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    margin-left: auto;
+  }
+
+  /* ── Handoff tab bar ── */
+  .tab-bar {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+  .tab-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .06em;
+    padding: .65rem 1rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover { color: var(--text2); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-btn .tab-count {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--surface2);
+    color: var(--text3);
+  }
+  .tab-btn.active .tab-count { background: var(--accent); color: #fff; }
+
+  /* ── Handoff banner (note + meta) ── */
+  .handoff-banner {
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 1.25rem 1.5rem 0;
+  }
+  .handoff-note-box {
+    background: #0e1827;
+    border: 1px solid #1a3554;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .handoff-note-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #3b82f6;
+    margin-bottom: .4rem;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+  }
+  .handoff-note-text {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .handoff-meta-row {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-bottom: .25rem;
+  }
+  .handoff-meta-pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .handoff-meta-pill.highlight {
+    background: #0a1f0e;
+    border-color: #1a3320;
+    color: #4ade80;
+  }
+
+  /* ── Context files panel ── */
+  .context-panel {
+    max-width: 820px;
+    width: 100%;
+    margin: 0 auto;
+    padding: 1.5rem;
+    display: none;
+    flex-direction: column;
+    gap: .75rem;
+  }
+  .context-panel.active { display: flex; }
+
+  .gemini-file-block {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .gemini-file-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .6rem .9rem;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .gemini-file-name {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .gemini-file-name svg { width: 12px; height: 12px; color: var(--accent2); }
+  .gemini-file-body {
+    display: none;
+    padding: 1rem;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+    white-space: pre-wrap;
+    line-height: 1.7;
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+  .gemini-file-body.open { display: block; }
+
+  .privacy-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    max-width: 520px;
+    width: 100%;
+    margin-top: .85rem;
+    padding: .65rem .9rem;
+    background: #081a10;
+    border: 1px solid #0f3320;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #4ade80;
+    line-height: 1.5;
+  }
+
+  .author-credit {
+    margin-top: 2rem;
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+    letter-spacing: .04em;
+  }
+  .author-credit span {
+    color: var(--text2);
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Drop / Paste screen ── -->
+<div id="drop-screen">
+  <div class="logo"><span>⬡</span> gemini chat viewer</div>
+
+  <div class="drop-card" id="drop-zone">
+    <input type="file" id="file-input" accept=".json">
+    <div class="drop-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+    </div>
+    <div class="drop-title">Drop your export here</div>
+    <div class="drop-sub">Drag & drop, or click to choose the <strong style="color:var(--text);font-weight:500">.json</strong> file exported from Gemini CLI via <code style="font-family:var(--mono);font-size:11px;background:var(--surface2);padding:1px 5px;border-radius:3px">/chat share filename.json</code></div>
+    <div class="drop-formats">
+      <span class="fmt-badge">.json only</span>
+    </div>
+  </div>
+
+  <div class="paste-area">
+    <div class="or-paste" style="text-align:center;margin-bottom:.5rem">— or paste the JSON below —</div>
+    <textarea id="paste-input" placeholder='Paste exported JSON here…'></textarea>
+    <button class="parse-btn" id="parse-btn">Parse & View</button>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <div class="privacy-notice">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:13px;height:13px;flex-shrink:0;margin-top:1px"><path d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"/></svg>
+    <span>Your data never leaves your browser. No network requests are made — everything is processed locally.</span>
+  </div>
+
+  <div class="author-credit">Built by <span>Mohamed Aly</span></div>
+</div>
+
+<!-- ── Viewer ── -->
+<div id="viewer">
+  <header class="viewer-header">
+    <div class="header-left">
+      <span class="header-logo"><span>⬡</span> gemini chat viewer</span>
+      <span class="header-sep">·</span>
+      <span class="chat-title" id="chat-title">Chat</span>
+    </div>
+    <div class="header-actions">
+      <span class="stat-pill" id="stat-handoff" style="display:none;background:#0a1f0e;border-color:#1a3320;color:#4ade80">handoff</span>
+      <span class="stat-pill" id="stat-turns">0 turns</span>
+      <span class="stat-pill" id="stat-tool-calls">0 tool calls</span>
+      <button class="icon-btn" id="new-btn" title="Load new chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7-7 7 7"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Handoff note banner (shown only for .handoff.json files) -->
+  <div class="handoff-banner" id="handoff-banner" style="display:none">
+    <div class="handoff-meta-row" id="handoff-meta-row"></div>
+    <div class="handoff-note-box" id="handoff-note-box" style="display:none">
+      <div class="handoff-note-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>
+        handoff note
+      </div>
+      <div class="handoff-note-text" id="handoff-note-text"></div>
+    </div>
+  </div>
+
+  <!-- Tab bar (shown only for handoff files) -->
+  <div class="tab-bar" id="tab-bar" style="display:none">
+    <button class="tab-btn active" id="tab-chat" onclick="switchTab('chat')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155"/></svg>
+      conversation
+    </button>
+    <button class="tab-btn" id="tab-context" onclick="switchTab('context')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+      gemini.md files
+      <span class="tab-count" id="tab-context-count">0</span>
+    </button>
+  </div>
+
+  <!-- Context files panel -->
+  <div class="context-panel" id="context-panel"></div>
+
+  <div class="chat-thread" id="chat-thread"></div>
+</div>
+
+<script>
+// ── Parser ──────────────────────────────────────────────────────────────────
+
+function parseJSON(raw) {
+  const data = JSON.parse(raw);
+  const arr = Array.isArray(data) ? data : (data.messages || data.conversation || data.history || []);
+  return arr;
+}
+
+const SESSION_TAGS = ['session_context', 'editor_context', 'context'];
+
+const INJECTED_PROSE_PATTERNS = [
+  /^here is the user's editor context/i,
+  /^here is the (current )?editor context/i,
+  /^this is the gemini cli/i,
+  /^the following is (injected|system|context)/i,
+];
+
+function isContextText(text) {
+  const trimmed = text.trim();
+  if (SESSION_TAGS.some(t => trimmed.startsWith(`<${t}>`))) return true;
+  if (INJECTED_PROSE_PATTERNS.some(p => p.test(trimmed))) return true;
+  return false;
+}
+
+function extractContextTag(text) {
+  const m = text.match(/^<([a-z_]+)>/);
+  return m ? m[1] : 'context';
+}
+
+function stripContextTags(text) {
+  return text.replace(/<[a-z_]+>[\s\S]*?<\/[a-z_]+>/g, '').trim();
+}
+
+// ── Render helpers ───────────────────────────────────────────────────────────
+
+let toggleCounter = 0;
+
+function makeToggle(headerEl, bodyEl) {
+  const id = ++toggleCounter;
+  headerEl.addEventListener('click', () => {
+    const open = bodyEl.classList.toggle('open');
+    const chevron = headerEl.querySelector('.chevron');
+    if (chevron) chevron.classList.toggle('open', open);
+  });
+}
+
+function chevronSVG() {
+  return `<svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;flex-shrink:0"><path d="M9 5l7 7-7 7"/></svg>`;
+}
+
+function copyBtn(text) {
+  const btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'copy';
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+    });
+  });
+  return btn;
+}
+
+function renderTextPart(text) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'part';
+
+  // Check for context block
+  if (isContextText(text)) {
+    const tag = extractContextTag(text);
+    const label = tag.replace(/_/g, ' ');
+    const block = document.createElement('div');
+    block.className = 'context-block';
+
+    const header = document.createElement('div');
+    header.className = 'context-header';
+    header.innerHTML = `
+      <span class="context-label">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0H3"/></svg>
+        ${label}
+      </span>
+      <div style="display:flex;align-items:center;gap:.5rem">
+        ${chevronSVG()}
+      </div>`;
+
+    const body = document.createElement('div');
+    body.className = 'context-body';
+    body.textContent = text.replace(/<[^>]+>/g, '').trim();
+
+    makeToggle(header, body);
+    block.appendChild(header);
+    block.appendChild(body);
+    wrapper.appendChild(block);
+  } else if (text.trim()) {
+    const p = document.createElement('div');
+    p.className = 'text-part';
+    p.textContent = text;
+    wrapper.appendChild(p);
+  }
+
+  return wrapper;
+}
+
+function renderFunctionCall(fc) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'part';
+
+  const block = document.createElement('div');
+  block.className = 'tool-block';
+
+  const argsStr = fc.args ? JSON.stringify(fc.args, null, 2) : '';
+  const preview = fc.args
+    ? Object.entries(fc.args).map(([k,v]) => `${k}: ${String(v).slice(0,40)}`).join(' · ')
+    : '';
+
+  const header = document.createElement('div');
+  header.className = 'tool-header';
+  header.innerHTML = `
+    <div class="tool-meta">
+      <span class="tool-type-badge tbadge-call">call</span>
+      <span class="tool-name">${escHtml(fc.name)}</span>
+      <span class="tool-args-preview">${escHtml(preview)}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      ${chevronSVG()}
+    </div>`;
+
+  const body = document.createElement('div');
+  body.className = 'tool-body';
+  body.textContent = argsStr || '(no args)';
+
+  const copyButton = copyBtn(argsStr);
+  header.querySelector('div:last-child').prepend(copyButton);
+
+  makeToggle(header, body);
+  block.appendChild(header);
+  block.appendChild(body);
+  wrapper.appendChild(block);
+  return wrapper;
+}
+
+function renderFunctionResponse(fr) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'part';
+
+  const block = document.createElement('div');
+  block.className = 'fn-response';
+
+  const output = fr.response?.output || fr.response?.result || JSON.stringify(fr.response, null, 2) || '';
+
+  const header = document.createElement('div');
+  header.className = 'fn-response-header';
+  header.innerHTML = `
+    <div class="tool-meta">
+      <span class="tool-type-badge tbadge-response">result</span>
+      <span class="tool-name">${escHtml(fr.name)}</span>
+      <span class="tool-args-preview">${escHtml(String(output).slice(0, 60).replace(/\n/g,' '))}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      ${chevronSVG()}
+    </div>`;
+
+  const body = document.createElement('div');
+  body.className = 'fn-response-body';
+  body.textContent = output;
+
+  const copyButton = copyBtn(output);
+  header.querySelector('div:last-child').prepend(copyButton);
+
+  makeToggle(header, body);
+  block.appendChild(header);
+  block.appendChild(body);
+  wrapper.appendChild(block);
+  return wrapper;
+}
+
+function renderThought(signature) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'part';
+
+  const block = document.createElement('div');
+  block.className = 'thought-block';
+
+  const header = document.createElement('div');
+  header.className = 'thought-header';
+  header.innerHTML = `
+    <span class="thought-label">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:11px;height:11px"><path d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"/></svg>
+      internal thought
+    </span>
+    <div style="display:flex;align-items:center;gap:.5rem">
+      <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${signature.length} chars</span>
+      ${chevronSVG()}
+    </div>`;
+
+  const body = document.createElement('div');
+  body.className = 'thought-body';
+  body.textContent = '[Encoded thought signature — not human-readable]';
+
+  makeToggle(header, body);
+  block.appendChild(header);
+  block.appendChild(body);
+  wrapper.appendChild(block);
+  return wrapper;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Main render ──────────────────────────────────────────────────────────────
+
+function renderChat(messages) {
+  const thread = document.getElementById('chat-thread');
+  thread.innerHTML = '';
+
+  if (!messages || messages.length === 0) {
+    thread.innerHTML = '<div class="empty-notice">No messages found in this export.</div>';
+    return;
+  }
+
+  let toolCallCount = 0;
+  let turnCount = 0;
+  let chatTitle = 'Chat';
+
+  // track real user turns (skip pure context/fn-response turns)
+  let turnIndex = 0;
+
+  messages.forEach((msg, i) => {
+    const role = msg.role || 'unknown';
+    const parts = msg.parts || [];
+    if (!parts.length) return;
+
+    // Classify the true nature of this turn:
+    // A "user" turn in Gemini CLI JSON can actually be one of three things:
+    //   1. A real user message (has a text part that isn't a context injection)
+    //   2. A tool-results turn (only functionResponse parts — the model's tool calls answered)
+    //   3. A context injection turn (only system context text parts, no real user message)
+    const hasRealText = parts.some(p =>
+      p.text !== undefined && p.text.trim() && !isContextText(p.text)
+    );
+    const hasFnResponse = parts.some(p => p.functionResponse);
+    const hasFnCall     = parts.some(p => p.functionCall);
+    const hasThought    = parts.some(p => p.thoughtSignature);
+
+    // Pure tool-result turns: user role + only functionResponse parts (no real text)
+    const isToolResultTurn = role === 'user' && hasFnResponse && !hasRealText;
+    // Skip pure context-injection turns (no real user text, no fn responses)
+    const isContextOnly = role === 'user' && !hasRealText && !hasFnResponse;
+    if (isContextOnly) return;
+
+    // Determine display role
+    let displayRole, badgeClass, badgeLabel;
+    if (isToolResultTurn) {
+      displayRole = 'tool';
+      badgeClass  = 'role-tool';
+      badgeLabel  = 'tool results';
+    } else if (role === 'user') {
+      displayRole = 'user';
+      badgeClass  = 'role-user';
+      badgeLabel  = 'user';
+    } else {
+      displayRole = 'model';
+      badgeClass  = 'role-model';
+      badgeLabel  = 'model';
+    }
+
+    turnCount++;
+    const turn = document.createElement('div');
+    turn.className = 'turn';
+    turn.style.animationDelay = `${Math.min(i * 30, 300)}ms`;
+
+    const header = document.createElement('div');
+    header.className = 'turn-header';
+
+    const badge = document.createElement('span');
+    badge.className = `role-badge ${badgeClass}`;
+    badge.textContent = badgeLabel;
+
+    const idx = document.createElement('span');
+    idx.className = 'turn-idx';
+    idx.textContent = `#${++turnIndex}`;
+
+    header.appendChild(badge);
+    header.appendChild(idx);
+    turn.appendChild(header);
+
+    parts.forEach(part => {
+      if (part.text !== undefined) {
+        turn.appendChild(renderTextPart(part.text));
+        // Extract first real user message as chat title
+        if (chatTitle === 'Chat' && displayRole === 'user' && part.text.trim() && !isContextText(part.text)) {
+          chatTitle = part.text.trim().slice(0, 80);
+        }
+      } else if (part.functionCall) {
+        toolCallCount++;
+        turn.appendChild(renderFunctionCall(part.functionCall));
+      } else if (part.functionResponse) {
+        turn.appendChild(renderFunctionResponse(part.functionResponse));
+      } else if (part.thoughtSignature) {
+        turn.appendChild(renderThought(part.thoughtSignature));
+      }
+    });
+
+    thread.appendChild(turn);
+  });
+
+  document.getElementById('chat-title').textContent = chatTitle;
+  document.getElementById('stat-turns').textContent = `${turnCount} turns`;
+  document.getElementById('stat-tool-calls').textContent = `${toolCallCount} tool calls`;
+}
+
+// ── Load / parse logic ───────────────────────────────────────────────────────
+
+function loadData(raw) {
+  raw = raw.trim();
+  const errorEl = document.getElementById('error-msg');
+  errorEl.style.display = 'none';
+
+  let messages;
+
+  if (raw.startsWith('[') || raw.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+
+      // Detect handoff bundle
+      if (parsed.type === 'gemini-handoff') {
+        loadHandoff(parsed);
+        return;
+      }
+
+      messages = Array.isArray(parsed)
+        ? parsed
+        : (parsed.messages || parsed.conversation || parsed.history || []);
+    } catch(e) {
+      errorEl.textContent = `JSON parse error: ${e.message}`;
+      errorEl.style.display = 'block';
+      return;
+    }
+  } else {
+    messages = parseMarkdown(raw);
+  }
+
+  if (!messages || messages.length === 0) {
+    errorEl.textContent = 'No messages found. Make sure this is a valid Gemini CLI export.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  renderChat(messages);
+  document.getElementById('drop-screen').style.display = 'none';
+  document.getElementById('viewer').style.display = 'flex';
+}
+
+function loadHandoff(bundle) {
+  // Show handoff badge in header
+  document.getElementById('stat-handoff').style.display = '';
+
+  // Banner
+  const banner = document.getElementById('handoff-banner');
+  banner.style.display = 'block';
+
+  // Meta pills
+  const metaRow = document.getElementById('handoff-meta-row');
+  metaRow.innerHTML = '';
+  const addPill = (text, highlight) => {
+    const p = document.createElement('span');
+    p.className = 'handoff-meta-pill' + (highlight ? ' highlight' : '');
+    p.textContent = text;
+    metaRow.appendChild(p);
+  };
+  if (bundle.exportedAt) addPill(new Date(bundle.exportedAt).toLocaleString());
+  if (bundle.geminiFiles?.length) addPill(`${bundle.geminiFiles.length} GEMINI.md file${bundle.geminiFiles.length > 1 ? 's' : ''}`, true);
+
+  // Handoff note
+  if (bundle.handoffNote?.trim()) {
+    document.getElementById('handoff-note-box').style.display = 'block';
+    document.getElementById('handoff-note-text').textContent = bundle.handoffNote;
+  }
+
+  // Tab bar
+  document.getElementById('tab-bar').style.display = 'flex';
+  document.getElementById('tab-context-count').textContent = bundle.geminiFiles?.length || 0;
+
+  // Render GEMINI.md files into context panel
+  const panel = document.getElementById('context-panel');
+  panel.innerHTML = '';
+  if (bundle.geminiFiles?.length) {
+    bundle.geminiFiles.forEach(f => {
+      const block = document.createElement('div');
+      block.className = 'gemini-file-block';
+
+      const shortPath = f.path.replace(/^.*\/([^/]+\/[^/]+)$/, '$1');
+
+      const header = document.createElement('div');
+      header.className = 'gemini-file-header';
+      header.innerHTML = `
+        <div class="gemini-file-name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg>
+          ${escHtml(shortPath)}
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--text3)">${f.content?.length || 0} chars</span>
+          ${chevronSVG()}
+        </div>`;
+
+      const body = document.createElement('div');
+      body.className = 'gemini-file-body';
+      body.textContent = f.content || '(empty)';
+
+      makeToggle(header, body);
+      block.appendChild(header);
+      block.appendChild(body);
+      panel.appendChild(block);
+    });
+  } else {
+    panel.innerHTML = '<div class="empty-notice">No GEMINI.md files were included in this handoff.</div>';
+  }
+
+  // Render conversation
+  renderChat(bundle.conversation || []);
+
+  document.getElementById('drop-screen').style.display = 'none';
+  document.getElementById('viewer').style.display = 'flex';
+}
+
+function switchTab(tab) {
+  const chatThread = document.getElementById('chat-thread');
+  const contextPanel = document.getElementById('context-panel');
+  const tabChat = document.getElementById('tab-chat');
+  const tabContext = document.getElementById('tab-context');
+
+  if (tab === 'chat') {
+    chatThread.style.display = '';
+    contextPanel.classList.remove('active');
+    tabChat.classList.add('active');
+    tabContext.classList.remove('active');
+  } else {
+    chatThread.style.display = 'none';
+    contextPanel.classList.add('active');
+    tabChat.classList.remove('active');
+    tabContext.classList.add('active');
+  }
+}
+
+// Basic markdown parser for /chat share .md exports
+function parseMarkdown(md) {
+  const messages = [];
+  // Gemini MD format: **User:** or **Model:** or ## User / ## Model
+  const lines = md.split('\n');
+  let currentRole = null;
+  let currentText = [];
+
+  function flush() {
+    if (currentRole && currentText.length) {
+      const text = currentText.join('\n').trim();
+      if (text) {
+        messages.push({ role: currentRole, parts: [{ text }] });
+      }
+    }
+    currentText = [];
+  }
+
+  for (const line of lines) {
+    const userMatch = line.match(/^(?:##\s*)?(?:\*\*)?(?:User|Human)(?:\*\*)?[:\s]/i);
+    const modelMatch = line.match(/^(?:##\s*)?(?:\*\*)?(?:Model|Assistant|Gemini)(?:\*\*)?[:\s]/i);
+
+    if (userMatch) {
+      flush();
+      currentRole = 'user';
+      const rest = line.replace(/^(?:##\s*)?(?:\*\*)?(?:User|Human)(?:\*\*)?[:\s]*/i, '').trim();
+      if (rest) currentText.push(rest);
+    } else if (modelMatch) {
+      flush();
+      currentRole = 'model';
+      const rest = line.replace(/^(?:##\s*)?(?:\*\*)?(?:Model|Assistant|Gemini)(?:\*\*)?[:\s]*/i, '').trim();
+      if (rest) currentText.push(rest);
+    } else {
+      currentText.push(line);
+    }
+  }
+  flush();
+  return messages;
+}
+
+// ── Events ───────────────────────────────────────────────────────────────────
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  dropZone.classList.add('over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) readFile(fileInput.files[0]);
+});
+
+function readFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => loadData(e.target.result);
+  reader.readAsText(file);
+}
+
+document.getElementById('parse-btn').addEventListener('click', () => {
+  const val = document.getElementById('paste-input').value;
+  if (val.trim()) loadData(val);
+});
+
+document.getElementById('paste-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    const val = e.target.value;
+    if (val.trim()) loadData(val);
+  }
+});
+
+document.getElementById('new-btn').addEventListener('click', () => {
+  document.getElementById('viewer').style.display = 'none';
+  document.getElementById('drop-screen').style.display = 'flex';
+  document.getElementById('paste-input').value = '';
+  document.getElementById('error-msg').style.display = 'none';
+  fileInput.value = '';
+  // Reset handoff UI
+  document.getElementById('stat-handoff').style.display = 'none';
+  document.getElementById('handoff-banner').style.display = 'none';
+  document.getElementById('handoff-note-box').style.display = 'none';
+  document.getElementById('tab-bar').style.display = 'none';
+  document.getElementById('context-panel').classList.remove('active');
+  document.getElementById('chat-thread').style.display = '';
+  document.getElementById('tab-chat').classList.add('active');
+  document.getElementById('tab-context').classList.remove('active');
+});
+</script>
+</body>
+</html>
